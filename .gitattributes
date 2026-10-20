@@ -1,0 +1,4 @@
+# The raw CSVs are the exact UCI files: never convert their line endings, so the
+# SHA-256 checksums in data/raw/SHA256SUMS hold on every OS.
+data/raw/*.csv -text
+data/raw/SHA256SUMS -text
