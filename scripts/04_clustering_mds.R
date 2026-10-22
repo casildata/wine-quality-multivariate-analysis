@@ -47,7 +47,11 @@ qual_tbl <- do.call(rbind, lapply(sort(unique(km_w$cluster)), function(cl) {
                                      pretty_var(top)), collapse = ", "))
 }))
 qual_tbl <- qual_tbl[order(-qual_tbl$mean_quality), ]
-qual_anova_p <- summary(aov(wine$quality[white] ~ factor(km_w$cluster)))[[1]][["Pr(>F)"]][1]
+qual_anova <- summary(aov(wine$quality[white] ~ factor(km_w$cluster)))[[1]]
+qual_anova_p <- qual_anova[["Pr(>F)"]][1]
+# Effect size: with n = 4,898 any difference is "significant", so report the share of
+# quality variance the clusters explain (eta squared)
+qual_eta2 <- qual_anova[["Sum Sq"]][1] / sum(qual_anova[["Sum Sq"]])
 
 # ---- Classical MDS on the same sample ----------------------------------------------
 mds <- cmdscale(dist(Z[hc_idx, ]), k = 2)
@@ -80,9 +84,11 @@ report_add("## 4. Clustering and multidimensional scaling\n\n",
            "without being told which is which.** Ward hierarchical clustering on a stratified ",
            "sample agrees (ARI at k = 2: ", sprintf("%.2f", hc_ari[1]), ").\n\n",
            "**Within white wine**, three chemistry clusters differ in quality (ANOVA p ",
-           if (qual_anova_p < 1e-4) "< 0.0001" else sprintf("= %.4f", qual_anova_p), "):\n\n",
+           if (qual_anova_p < 1e-4) "< 0.0001" else sprintf("= %.4f", qual_anova_p),
+           ", η² = ", sprintf("%.3f", qual_eta2), "):\n\n",
            paste(md_table(qual_tbl), collapse = "\n"), "\n\n",
-           "The differences are real but modest: clustering finds *styles* of wine, not quality ",
+           "The differences are real but modest: the clusters explain ", pct(qual_eta2),
+           " of the variation in quality. Clustering finds *styles* of wine, not quality ",
            "grades. Section 6 tests prediction directly.\n\n",
            "**MDS check:** classical MDS on Euclidean distances of standardized data is ",
            "mathematically equivalent to PCA; the first MDS dimension correlates ",

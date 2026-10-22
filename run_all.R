@@ -1,6 +1,6 @@
 # Reproduce every table and figure from the repository root:
 #   Rscript run_all.R
-# Packages: listed in r-packages.txt; missing ones are installed on first run.
+# Packages: listed in r-packages.txt; the run stops with the install command if any are missing.
 source("R/check_packages.R")
 source("R/check_data.R")     # raw CSVs must match the UCI checksums
 source("R/helpers.R")

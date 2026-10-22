@@ -17,8 +17,8 @@
 |---|---|
 | Can unsupervised methods tell red from white? | **Yes.** k-means with k = 2 matches wine type for **98.6%** of wines (adjusted Rand index 0.94) without ever seeing the label; PC1 alone correlates 0.83 with type |
 | How many dimensions does the chemistry really have? | 3 principal components (eigenvalue > 1) explain **64%** of the variance; PC1 = red vs. white, PC2 = sugar/density vs. alcohol |
-| Are there outliers? | Robust (MCD) Mahalanobis distance flags **761** wines vs. **197** for the classical distance, which is a textbook case of *masking* |
-| Can chemistry predict a "good" (7+) white wine? | Partly: cross-validated LDA reaches AUC **0.78**; at a base-rate threshold it catches **74%** of good wines with 71% specificity |
+| Are there outliers? | Robust (MCD) Mahalanobis distance flags **761** wines vs. **197** for the classical distance: *masking*. Heavy right tails inflate both counts; with the skewed variables on a log scale it's 524 vs. 136, and the gap remains |
+| Can chemistry predict a "good" (7+) white wine? | Partly: cross-validated LDA reaches AUC **0.78**, but alcohol alone already gets 0.75. At a base-rate threshold LDA catches **74%** of good wines with 71% specificity |
 | Bug found in the original analysis | The original outlier rule used the *lower* chi-square tail, flagging the 32 most **typical** wines as outliers |
 
 ![PCA biplot](docs/figures/pca_scree_biplot.png)
@@ -41,7 +41,7 @@ flowchart LR
 |---|---|---|
 | 1 | [`01_explore.R`](scripts/01_explore.R) | Standardized mean differences rank what separates red from white (total SO₂, volatile acidity, chlorides); correlation heatmap |
 | 2 | [`02_outliers.R`](scripts/02_outliers.R) | Three outlier rules compared per wine type, chi-square Q-Q plot of classical vs. robust distances |
-| 3 | [`03_pca.R`](scripts/03_pca.R) | PCA on standardized data, interpretable components, loadings stable (\|r\| ≥ 0.99) when outliers are removed |
+| 3 | [`03_pca.R`](scripts/03_pca.R) | PCA on standardized data, interpretable components, loadings stable (\|r\| ≈ 0.99) when outliers are removed |
 | 4 | [`04_clustering_mds.R`](scripts/04_clustering_mds.R) | k chosen by silhouette, agreement with true type by adjusted Rand index, white-wine "style" clusters vs. quality, MDS ≡ PCA check |
 | 5 | [`05_factor_analysis.R`](scripts/05_factor_analysis.R) | Parallel analysis for the number of factors, Heywood-case detection, varimax loadings |
 | 6 | [`06_discriminant_analysis.R`](scripts/06_discriminant_analysis.R) | Cross-validated LDA, sensitivity/specificity/AUC, why a 0.5 threshold misleads on imbalanced classes |
@@ -66,11 +66,11 @@ Alcohol barely differs between types, yet it is the single measurement most corr
 
 ![Chi-square Q-Q plot](docs/figures/outlier_chisq_qq.png)
 
-If the data were multivariate normal, the points would follow the dashed line. The classical distances (blue) bend away late because the outliers inflate the covariance they are measured against. The robust MCD distances (red) expose the tail. Later steps report results with and without flagged wines rather than deleting them silently.
+If the data were multivariate normal, the points would follow the dashed line. The classical distances (blue) bend away late because the outliers inflate the covariance they are measured against. The robust MCD distances (red) expose the tail. Flagged wines are kept, and the PCA is re-run without them to check they don't drive the components.
 
 ### Clustering finds wine styles, not quality grades
 
-Within white wine, three chemistry clusters differ in mean quality (5.61 → 6.15, ANOVA p < 0.0001), and the share of 7+ wines ranges from 9% to 34%. The pattern is real but modest. Clusters are styles (sweet and dense, high acidity, high pH) rather than quality grades.
+Within white wine, three chemistry clusters differ in mean quality (5.61 → 6.15, ANOVA p < 0.0001), and the share of 7+ wines ranges from 9% to 34%. The pattern is real but modest: the clusters explain 6.7% of the variation in quality (η² = 0.067). Clusters are styles (sweet and dense, high acidity, high pH) rather than quality grades.
 
 ![Clustering and MDS](docs/figures/clustering_mds.png)
 
@@ -80,13 +80,14 @@ Within white wine, three chemistry clusters differ in mean quality (5.61 → 6.1
 |---|---|---|---|---|---|
 | 0.5 | 80.1% | 31.3% | 93.6% | 62.5% | 0.784 |
 | 0.22 (base rate) | 71.9% | 73.6% | 71.4% | 72.5% | 0.784 |
+| Baseline: alcohol only, 0.22 | 71.8% | 70.5% | 72.2% | 71.3% | 0.752 |
 
-80% accuracy at 0.5 sounds good until you notice that "always predict not good" scores 78%. Choosing the threshold is a business decision, not a default.
+80% accuracy at 0.5 sounds good until you notice that "always predict not good" scores 78%. Choosing the threshold is a business decision, not a default. And the other ten measurements add only 0.03 of AUC over alcohol alone.
 
 ## Limitations & lessons learned
 
 - **Check which tail you're testing.** The original outlier code flagged `pchisq(d²) < 0.001`, which picks the wines *closest* to the centre. Plotting the flagged points would have caught it immediately.
-- **Classical estimates hide the outliers you're looking for.** Robust covariance (MCD) found almost 4× as many unusual wines.
+- **Classical estimates hide the outliers you're looking for.** Robust covariance (MCD) found almost 4× as many unusual wines. Skewness matters too: logging five right-skewed variables cuts both counts by about a third.
 - **Near-collinear variables break maximum-likelihood factor analysis.** Density is 91% explained by sugar and alcohol, which pushes uniquenesses to zero (a Heywood case). `factanal` doesn't warn; you have to check.
 - **Accuracy is the wrong headline on imbalanced classes.** Report sensitivity, specificity and AUC, and choose the threshold on purpose.
 
@@ -94,16 +95,16 @@ Within white wine, three chemistry clusters differ in mean quality (5.61 → 6.1
 
 ### Requirements
 
-- R 4.1 or later (tested on 4.6.1) with `ggplot2` and `patchwork` (`MASS` and `cluster` ship with R).
+- R 4.1 or later (tested on 4.6.1) with `ggplot2`, `patchwork` and `digest` (`MASS` and `cluster` ship with R). `digest` is only needed for the data check on R older than 4.5.
 - Data ships with the repo in `data/raw/`: the exact UCI files, checked against their SHA-256 checksums before every run.
 
 ### Install
 
-Missing packages are installed automatically the first time you run the scripts; an interactive R session (RStudio, VS Code) asks first. The list lives in [`r-packages.txt`](r-packages.txt). To install everything up front instead:
-
 ```r
-install.packages(c("ggplot2", "patchwork"))
+install.packages(c("ggplot2", "patchwork", "digest"))
 ```
+
+Nothing is installed automatically: if a package from [`r-packages.txt`](r-packages.txt) is missing, the scripts stop and print the command.
 
 ### Run
 
@@ -113,16 +114,16 @@ Rscript run_all.R
 
 ### Output
 
-About 20 seconds. Writes `docs/results.md` and the figures in `docs/figures/`; outlier flags go to `outputs/outlier_flags.csv` (git-ignored).
+About 30 seconds. Writes `docs/results.md` and the figures in `docs/figures/`; outlier flags go to `outputs/outlier_flags.csv` (git-ignored).
 
 ## Repository structure
 
 ```
 wine-quality-multivariate-analysis/
 ├── run_all.R                     # runs scripts 01-06, writes docs/results.md
-├── r-packages.txt                # R packages (installed automatically if missing)
+├── r-packages.txt                # R packages used by the scripts
 ├── R/
-│   ├── check_packages.R          # installs missing packages from r-packages.txt
+│   ├── check_packages.R          # stops with install instructions if a package is missing
 │   ├── check_data.R              # stops if a raw CSV doesn't match data/raw/SHA256SUMS
 │   ├── helpers.R                 # data loader, adjusted Rand index, AUC
 │   └── report.R                  # markdown report + figure helpers

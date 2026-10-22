@@ -51,15 +51,17 @@ Each type is screened separately (their centres differ). A wine is flagged when 
 
 | type | wines | boxplot_rule | classical_mahalanobis | robust_mcd | both_mahalanobis | original_lower_tail_rule |
 |---|---|---|---|---|---|---|
-| red | 1,599 | 120 | 60 | 324 | 60 | 9 |
-| white | 4,898 | 159 | 137 | 437 | 137 | 23 |
+| red | 1,599 | 120 | 60 | 322 | 60 | 9 |
+| white | 4,898 | 159 | 137 | 439 | 137 | 23 |
 
 | comparison | share_of_robust_flags_also_caught |
 |---|---|
-| Box-plot rule vs. robust MCD | 32.5% |
+| Box-plot rule vs. robust MCD | 32.6% |
 | Classical vs. robust MCD | 25.9% |
 
-The classical distance uses a mean and covariance that the outliers themselves inflate (*masking*), so it flags far fewer wines than the robust MCD estimate. The heavy upper tail in the Q-Q plot shows that the 11-variable normal model doesn't hold (several variables, such as chlorides and sulphates, are strongly right-skewed). That is why later steps report results **with and without** flagged wines instead of deleting them silently.
+The classical distance uses a mean and covariance that the outliers themselves inflate (*masking*), so it flags far fewer wines than the robust MCD estimate. The heavy upper tail in the Q-Q plot shows that the 11-variable normal model doesn't hold (several variables, such as chlorides and sulphates, are strongly right-skewed). Flagged wines are kept; section 3 re-runs the PCA without the classical outliers to check that they don't drive the components.
+
+**Masking or skewness?** With the five most skewed variables on a log scale (residual sugar, chlorides, free sulfur dioxide, sulphates, volatile acidity), the classical distance flags 136 wines and the robust one 524. Masking holds either way (the robust estimate flags several times more), but heavy tails, not only masking, inflate both counts.
 
 **Bug in the original analysis, fixed:** the original script flagged wines with `pchisq(d2) < 0.001`, the *lower* tail. That selects the most typical wines (here 32 wines with d² between 1.09 and 1.83), not the most unusual ones.
 
@@ -118,7 +120,7 @@ Loadings (signs fixed so PC1 is positive for white wine):
 
 The average silhouette is highest at k = 2. With k = 2 the clusters match wine type for 98.6% of wines (adjusted Rand index 0.94): **the chemistry separates red and white without being told which is which.** Ward hierarchical clustering on a stratified sample agrees (ARI at k = 2: 0.93).
 
-**Within white wine**, three chemistry clusters differ in quality (ANOVA p < 0.0001):
+**Within white wine**, three chemistry clusters differ in quality (ANOVA p < 0.0001, η² = 0.067):
 
 | cluster | wines | mean_quality | share_quality_7plus | profile |
 |---|---|---|---|---|
@@ -126,7 +128,7 @@ The average silhouette is highest at k = 2. With k = 2 the clusters match wine t
 | 3 | 1,468 | 5.90 | 23.0% | high fixed acidity, low pH |
 | 1 | 1,802 | 5.61 | 9.3% | high density, high residual sugar |
 
-The differences are real but modest: clustering finds *styles* of wine, not quality grades. Section 6 tests prediction directly.
+The differences are real but modest: the clusters explain 6.7% of the variation in quality. Clustering finds *styles* of wine, not quality grades. Section 6 tests prediction directly.
 
 **MDS check:** classical MDS on Euclidean distances of standardized data is mathematically equivalent to PCA; the first MDS dimension correlates 1.000 with PC1 scores of the same wines.
 
@@ -166,6 +168,8 @@ Density is excluded: residual sugar and alcohol alone explain 90.7% of its varia
 - F1: total sulfur dioxide (+0.91), free sulfur dioxide (+0.66), alcohol (-0.50)
 - F2: pH (-0.69), fixed acidity (+0.60), citric acid (+0.30)
 
+The model is weak: together the factors explain 29.0% of the variance, and volatile acidity, chlorides, sulphates load on neither (communality below 0.1). Most of the white-wine chemistry varies independently rather than through a few shared factors.
+
 The likelihood-ratio test of 2 factors gives p = <2e-16. With n = 4,898 the test rejects any parsimonious model, so the choice rests on parallel analysis and interpretability.
 
 ![Factor loadings](figures/factor_loadings.png)
@@ -177,10 +181,11 @@ The likelihood-ratio test of 2 factors gives p = <2e-16. With n = 4,898 the test
 | Red vs. white (all wines) | 0.5 | 99.5% | 99.7% | 98.8% | 99.2% | 0.996 |
 | Good (7+) vs. other (white) | 0.5 | 80.1% | 31.3% | 93.6% | 62.5% | 0.784 |
 | Good (7+) vs. other (white) | 0.22 (base rate) | 71.9% | 73.6% | 71.4% | 72.5% | 0.784 |
+| Baseline: alcohol only (white) | 0.22 (base rate) | 71.8% | 70.5% | 72.2% | 71.3% | 0.752 |
 
-**Red vs. white is almost perfectly separable**: the largest standardized discriminant weights are density (-2.73), residual sugar (+1.67), total sulfur dioxide (+1.13).
+**Red vs. white is almost perfectly separable**: the largest standardized discriminant weights are density (-2.73), residual sugar (+1.67), total sulfur dioxide (+1.13). The best single measurement, total sulfur dioxide, already ranks the types with AUC 0.953; the full model closes most of the remaining gap.
 
-**Quality is much harder.** Only 21.6% of white wines score 7+. At the default 0.5 threshold LDA looks accurate but misses most good wines (low sensitivity); lowering the threshold to the base rate trades accuracy for balanced accuracy. The AUC shows how far the chemistry alone can rank wines. Standardized discriminant weights for 'good':
+**Quality is much harder.** Only 21.6% of white wines score 7+. At the default 0.5 threshold LDA looks accurate but misses most good wines (low sensitivity); lowering the threshold to the base rate trades accuracy for balanced accuracy. The AUC shows how far the chemistry alone can rank wines, and the baseline row shows how little the other ten measurements add: alcohol on its own reaches AUC 0.752 against 0.784 for the full LDA. Standardized discriminant weights for 'good':
 
 | variable | coefficient |
 |---|---|

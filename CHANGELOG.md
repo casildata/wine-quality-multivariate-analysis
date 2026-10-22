@@ -1,5 +1,14 @@
 # Changelog: from the original project to this release
 
+## 2026-10-22: review fixes
+
+- Outliers: the report no longer claims every later step is re-run without flagged wines (only the PCA is), and a new check repeats both rules with the five skewed variables on a log scale (136 classical vs. 524 robust flags; masking holds, but heavy tails inflate both counts).
+- Baselines: the best single measurement for red vs. white (total sulfur dioxide, AUC 0.953) and an alcohol-only row for good white wine (AUC 0.752 vs. 0.784 for the full LDA).
+- Effect size for the white-wine clusters (η² = 0.067) and a note that the two-factor model is weak (29.0% of variance; three variables load on neither factor).
+- `R/check_packages.R` no longer installs packages; it prints the install command and stops. `digest` added so the data check runs on R older than 4.5.
+- The MCD seed is now 1, set once in `02_outliers.R`. The robust total is unchanged at 761 (322 red, 439 white, was 324 and 437); the box-plot rule's overlap with the robust flags moves from 32.5% to 32.6%.
+- Every other earlier number is unchanged; runtime is now about 30 seconds.
+
 ## Rebuild for publication (2026)
 
 Adapted from a graduate team project. This is a solo rewrite: no code from other team

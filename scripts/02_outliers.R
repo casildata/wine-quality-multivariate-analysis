@@ -7,13 +7,14 @@ library(MASS)
 
 p <- length(CHEM_VARS)
 cutoff <- qchisq(0.999, df = p)   # upper tail: far from the centre = outlier
+mcd_seed <- 1                     # MCD searches random subsets
 
 flag_type <- function(d) {
   X <- as.matrix(d[, CHEM_VARS])
   # Original rule: outside the box-plot whiskers on two or more variables
   iqr_hits <- rowSums(sapply(CHEM_VARS, function(v) d[[v]] %in% boxplot.stats(d[[v]])$out))
   classical <- mahalanobis(X, colMeans(X), cov(X))
-  set.seed(6350)
+  set.seed(mcd_seed)
   mcd <- cov.rob(X, method = "mcd")
   robust <- mahalanobis(X, mcd$center, mcd$cov)
   data.frame(id = d$id, type = d$type, quality = d$quality,
@@ -63,6 +64,21 @@ save_plot(p_qq, "outlier_chisq_qq.png", 9, 4.8)
 outliers_classical <- flags$id[flags$classical]
 d_orig <- with(flags[flags$original_rule, ], range(d2_classical))
 
+# ---- Masking or skewness? -------------------------------------------------------------
+# Heavy right tails also push wines past the cut-off, so repeat both rules with the
+# skewed variables on a log scale.
+count_flags <- function(d, seed) {
+  X <- as.matrix(d[, CHEM_VARS])
+  set.seed(seed)
+  mcd <- cov.rob(X, method = "mcd")
+  c(classical = sum(mahalanobis(X, colMeans(X), cov(X)) > cutoff),
+    robust = sum(mahalanobis(X, mcd$center, mcd$cov) > cutoff))
+}
+LOG_VARS <- c("residual_sugar", "chlorides", "free_sulfur_dioxide", "sulphates", "volatile_acidity")
+wine_log <- wine
+wine_log[LOG_VARS] <- lapply(wine_log[LOG_VARS], log)
+log_counts <- rowSums(sapply(split(wine_log, wine_log$type), count_flags, seed = mcd_seed))
+
 report_add("## 2. Multivariate outliers\n\n",
            "Each type is screened separately (their centres differ). A wine is flagged when its ",
            "squared Mahalanobis distance exceeds the 99.9th percentile of chi-square(", p, ") = ",
@@ -72,8 +88,14 @@ report_add("## 2. Multivariate outliers\n\n",
            "The classical distance uses a mean and covariance that the outliers themselves inflate ",
            "(*masking*), so it flags far fewer wines than the robust MCD estimate. The heavy upper ",
            "tail in the Q-Q plot shows that the 11-variable normal model doesn't hold (several ",
-           "variables, such as chlorides and sulphates, are strongly right-skewed). That is why later steps report results **with and ",
-           "without** flagged wines instead of deleting them silently.\n\n",
+           "variables, such as chlorides and sulphates, are strongly right-skewed). Flagged wines are ",
+           "kept; section 3 re-runs the PCA without the classical outliers to check that they don't ",
+           "drive the components.\n\n",
+           "**Masking or skewness?** With the five most skewed variables on a log scale (",
+           paste(pretty_var(LOG_VARS), collapse = ", "), "), the classical distance flags ",
+           log_counts["classical"], " wines and the robust one ", log_counts["robust"], ". Masking holds ",
+           "either way (the robust estimate flags several times more), but heavy tails, not only ",
+           "masking, inflate both counts.\n\n",
            "**Bug in the original analysis, fixed:** the original script flagged wines with `pchisq(d2) < 0.001`, ",
            "the *lower* tail. That selects the most typical wines (here ", sum(summ$original_lower_tail_rule),
            " wines with d² between ", sprintf("%.2f", d_orig[1]), " and ", sprintf("%.2f", d_orig[2]),
