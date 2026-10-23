@@ -1,5 +1,15 @@
 # Changelog: from the original project to this release
 
+## 2026-10-22: models, duplicates and CI
+
+- New `07_quality_models.R`: LDA, logistic regression and a random forest for good white wine, each scored with random and with grouped folds (copies of a lab profile kept in one fold). The forest is best at AUC 0.847 grouped, but random folds report 0.925: 31.8% of white wines have an identical twin in another fold. The linear models move by 0.002 at most, so section 6's numbers stand.
+- Duplicates: 1,177 rows repeat an earlier row. They are still kept; section 1 says so, the PCA check shows dropping them barely moves the loadings (|r| ≥ 0.987), and the outlier section reports counts without them.
+- Outliers: one robustness table replaces the separate log-scale check. The robust count ranges from 524 to 761 across four variants and stays 3.2–3.9× the classical count.
+- Cross-validation helpers (`make_folds`, `group_folds`, `cv_predict`) moved to `R/helpers.R`; LDA results unchanged.
+- The data check runs from `run_all.R` instead of when `R/check_data.R` is sourced.
+- Unit tests (`tests/`), `renv.lock`, and a GitHub Actions workflow: tests and the pipeline on the pinned versions, a drift check on `docs/results.md`, the tests again on R 4.1, and a secret scan.
+- Runtime is now about 1.5 minutes (the random forests).
+
 ## 2026-10-22: review fixes
 
 - Outliers: the report no longer claims every later step is re-run without flagged wines (only the PCA is), and a new check repeats both rules with the five skewed variables on a log scale (136 classical vs. 524 robust flags; masking holds, but heavy tails inflate both counts).

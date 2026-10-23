@@ -2,6 +2,7 @@
 # R/check_packages.R stops with the install command if any are missing.
 ggplot2
 patchwork
+randomForest
 digest      # SHA-256 data check on R < 4.5
 MASS        # ships with R
 cluster     # ships with R

@@ -6,15 +6,7 @@ library(MASS)
 library(ggplot2)
 
 cv_lda <- function(X, y, folds = 10, seed = 1) {
-  set.seed(seed)
-  fold <- sample(rep(seq_len(folds), length.out = nrow(X)))
-  post <- numeric(nrow(X))
-  for (f in seq_len(folds)) {
-    test <- fold == f
-    m <- lda(X[!test, , drop = FALSE], grouping = y[!test])
-    post[test] <- predict(m, X[test, , drop = FALSE])$posterior[, 2]
-  }
-  post
+  cv_predict(lda_fit_predict, X, y, make_folds(nrow(X), folds, seed))
 }
 metrics <- function(post, y, positive, threshold = 0.5) {
   pred <- post >= threshold

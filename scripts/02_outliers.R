@@ -64,9 +64,10 @@ save_plot(p_qq, "outlier_chisq_qq.png", 9, 4.8)
 outliers_classical <- flags$id[flags$classical]
 d_orig <- with(flags[flags$original_rule, ], range(d2_classical))
 
-# ---- Masking or skewness? -------------------------------------------------------------
-# Heavy right tails also push wines past the cut-off, so repeat both rules with the
-# skewed variables on a log scale.
+# ---- How much do the counts depend on the choices? ------------------------------------
+# Raw MCD isn't scaled to the chi-square: rescale its distances so their median matches.
+# Repeated rows count the same profile several times. Heavy right tails push wines past
+# the cut-off, so repeat both rules with the skewed variables on a log scale.
 count_flags <- function(d, seed) {
   X <- as.matrix(d[, CHEM_VARS])
   set.seed(seed)
@@ -77,7 +78,28 @@ count_flags <- function(d, seed) {
 LOG_VARS <- c("residual_sugar", "chlorides", "free_sulfur_dioxide", "sulphates", "volatile_acidity")
 wine_log <- wine
 wine_log[LOG_VARS] <- lapply(wine_log[LOG_VARS], log)
-log_counts <- rowSums(sapply(split(wine_log, wine_log$type), count_flags, seed = mcd_seed))
+by_type <- function(d) sapply(split(d, d$type), count_flags, seed = mcd_seed)
+log_counts <- by_type(wine_log)
+unique_counts <- by_type(wine[!is_repeat(wine), ])
+rescaled <- sapply(split(flags, flags$type), function(f)
+  sum(f$d2_robust / (median(f$d2_robust) / qchisq(0.5, p)) > cutoff))
+
+variant_rows <- list(
+  "Classical (above)" = summ$classical_mahalanobis,
+  "Robust MCD (above)" = summ$robust_mcd,
+  "Robust MCD, median rescaled to chi-square" = rescaled,
+  "Classical, repeated rows removed" = unique_counts["classical", ],
+  "Robust MCD, repeated rows removed" = unique_counts["robust", ],
+  "Classical, skewed variables logged" = log_counts["classical", ],
+  "Robust MCD, skewed variables logged" = log_counts["robust", ])
+variants <- data.frame(variant = names(variant_rows),
+                       red = sapply(variant_rows, `[`, 1), white = sapply(variant_rows, `[`, 2),
+                       row.names = NULL)
+variants$total <- variants$red + variants$white
+ratios <- c(sum(summ$robust_mcd) / sum(summ$classical_mahalanobis),
+            sum(rescaled) / sum(summ$classical_mahalanobis),
+            sum(unique_counts["robust", ]) / sum(unique_counts["classical", ]),
+            sum(log_counts["robust", ]) / sum(log_counts["classical", ]))
 
 report_add("## 2. Multivariate outliers\n\n",
            "Each type is screened separately (their centres differ). A wine is flagged when its ",
@@ -91,11 +113,17 @@ report_add("## 2. Multivariate outliers\n\n",
            "variables, such as chlorides and sulphates, are strongly right-skewed). Flagged wines are ",
            "kept; section 3 re-runs the PCA without the classical outliers to check that they don't ",
            "drive the components.\n\n",
-           "**Masking or skewness?** With the five most skewed variables on a log scale (",
-           paste(pretty_var(LOG_VARS), collapse = ", "), "), the classical distance flags ",
-           log_counts["classical"], " wines and the robust one ", log_counts["robust"], ". Masking holds ",
-           "either way (the robust estimate flags several times more), but heavy tails, not only ",
-           "masking, inflate both counts.\n\n",
+           "**How much do the counts depend on the choices?** The raw MCD distances sit above the ",
+           "chi-square line even in the middle of the Q-Q plot, so they are rescaled to match its ",
+           "median; repeated rows are dropped; and the five most skewed variables (",
+           paste(pretty_var(LOG_VARS), collapse = ", "), ") are put on a log scale:\n\n",
+           paste(md_table(variants), collapse = "\n"), "\n\n",
+           "Masking holds in every comparison (the robust estimate flags ",
+           sprintf("%.1f", min(ratios)), "–", sprintf("%.1f", max(ratios)),
+           " times as many wines as the classical one), but the robust count itself ranges from ",
+           min(variants$total[grepl("^Robust", variants$variant)]), " to ",
+           max(variants$total[grepl("^Robust", variants$variant)]),
+           ". Heavy tails, not only masking, push wines past the cut-off.\n\n",
            "**Bug in the original analysis, fixed:** the original script flagged wines with `pchisq(d2) < 0.001`, ",
            "the *lower* tail. That selects the most typical wines (here ", sum(summ$original_lower_tail_rule),
            " wines with d² between ", sprintf("%.2f", d_orig[1]), " and ", sprintf("%.2f", d_orig[2]),

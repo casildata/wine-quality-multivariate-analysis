@@ -30,5 +30,3 @@ check_data <- function(dir = "data/raw") {
   }
   invisible(TRUE)
 }
-
-check_data()

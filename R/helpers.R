@@ -41,3 +41,42 @@ auc <- function(score, positive) {
 }
 
 pct <- function(x, digits = 1) sprintf(paste0("%.", digits, "f%%"), 100 * x)
+
+# Rows that repeat an earlier row exactly (all measurements, quality and type).
+is_repeat <- function(d) duplicated(d[, c(CHEM_VARS, "quality", "type")])
+
+# One key per distinct lab profile, so identical wines can be kept together.
+profile_key <- function(d) do.call(paste, c(d[CHEM_VARS], sep = "|"))
+
+# Random fold labels, one per row.
+make_folds <- function(n, folds = 10, seed = 1) {
+  set.seed(seed)
+  sample(rep(seq_len(folds), length.out = n))
+}
+
+# Fold labels drawn per group, so all rows of a group land in the same fold.
+group_folds <- function(group, folds = 10, seed = 1) {
+  g <- unique(group)
+  make_folds(length(g), folds, seed)[match(group, g)]
+}
+
+# Out-of-fold scores from fit_predict(X_train, y_train, X_test).
+cv_predict <- function(fit_predict, X, y, fold) {
+  score <- numeric(nrow(X))
+  for (f in sort(unique(fold))) {
+    test <- fold == f
+    score[test] <- fit_predict(X[!test, , drop = FALSE], y[!test], X[test, , drop = FALSE])
+  }
+  score
+}
+
+# LDA posterior probability of the second class, for cv_predict().
+lda_fit_predict <- function(X_train, y_train, X_test) {
+  predict(MASS::lda(X_train, grouping = y_train), X_test)$posterior[, 2]
+}
+
+# Share of positives caught at the threshold that keeps the given share of negatives
+# below it (read from the cross-validated scores, like a point on the ROC curve).
+sensitivity_at <- function(score, positive, specificity = 0.9) {
+  mean(score[positive] > quantile(score[!positive], specificity, names = FALSE))
+}

@@ -70,6 +70,8 @@ save_plot(patchwork::wrap_plots(p_scree, p_bi, widths = c(1, 1.6)), "pca_scree_b
 # ---- Sensitivity: does removing outliers change the components? -----------------
 pca_clean <- prcomp(wine[!wine$id %in% outliers_classical, CHEM_VARS], scale. = TRUE)
 stability <- sapply(1:3, function(k) abs(cor(pca$rotation[, k], pca_clean$rotation[, k])))
+pca_unique <- prcomp(wine[!is_repeat(wine), CHEM_VARS], scale. = TRUE)
+stability_unique <- sapply(1:3, function(k) abs(cor(pca$rotation[, k], pca_unique$rotation[, k])))
 pc1_type_sep <- abs(cor(scores[, 1], wine$type == "white"))
 
 report_add("## 3. Principal component analysis\n\n",
@@ -87,5 +89,7 @@ report_add("## 3. Principal component analysis\n\n",
            "**Robustness:** re-running without the ", length(outliers_classical),
            " classical outliers leaves the loadings almost unchanged (|r| between old and new loadings: PC1 ",
            sprintf("%.3f", stability[1]), ", PC2 ", sprintf("%.3f", stability[2]), ", PC3 ",
-           sprintf("%.3f", stability[3]), ").\n\n",
+           sprintf("%.3f", stability[3]), "). Dropping the ", format(sum(is_repeat(wine)), big.mark = ","),
+           " repeated rows also leaves them almost unchanged (PC1 ", sprintf("%.3f", stability_unique[1]), ", PC2 ",
+           sprintf("%.3f", stability_unique[2]), ", PC3 ", sprintf("%.3f", stability_unique[3]), ").\n\n",
            "![PCA](figures/pca_scree_biplot.png)\n")

@@ -2,7 +2,7 @@
 
 library(ggplot2)
 
-n_dup <- sum(duplicated(wine[, c(CHEM_VARS, "quality", "type")]))
+n_dup <- sum(is_repeat(wine))
 counts <- as.data.frame(table(type = wine$type))
 quality_tbl <- as.data.frame.matrix(table(wine$type, wine$quality))
 quality_tbl <- cbind(type = rownames(quality_tbl), quality_tbl)
@@ -64,9 +64,10 @@ report_add("## 1. Exploration\n\n",
            format(nrow(wine), big.mark = ","), " wines (",
            format(counts$Freq[1], big.mark = ","), " red, ", format(counts$Freq[2], big.mark = ","), " white), ",
            "11 physicochemical measurements and a sensory quality score (median of at least ",
-           "three expert ratings). ", format(n_dup, big.mark = ","), " rows are exact duplicates; ",
-           "they are kept, as in the original study, because identical lab profiles can come ",
-           "from different wines.\n\n",
+           "three expert ratings). ", format(n_dup, big.mark = ","), " rows repeat an earlier row ",
+           "exactly. They are kept, as in the original study; sections 2 and 3 show how much they ",
+           "move the outlier counts and the components, and section 7 shows why model evaluation ",
+           "has to keep the copies together.\n\n",
            "**Quality scores by type** (most wines score 5–6; the scale is used narrowly):\n\n",
            paste(md_table(quality_tbl), collapse = "\n"), "\n\n",
            "**What separates red from white?** Standardized mean difference (red − white, in pooled SDs):\n\n",

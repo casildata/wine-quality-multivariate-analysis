@@ -2,6 +2,7 @@
 
 **Outlier detection, PCA, clustering, MDS, factor analysis and discriminant analysis on 6,497 Portuguese *vinho verde* wines: what does the chemistry say about wine type and expert quality ratings?**
 
+[![pipeline](https://github.com/casildata/wine-quality-multivariate-analysis/actions/workflows/pipeline.yml/badge.svg)](https://github.com/casildata/wine-quality-multivariate-analysis/actions/workflows/pipeline.yml)
 ![R](https://img.shields.io/badge/R-4.1%2B-276DC3?logo=r&logoColor=white)
 ![Methods](https://img.shields.io/badge/methods-PCA%20%7C%20k--means%20%7C%20MDS%20%7C%20EFA%20%7C%20LDA-informational)
 ![Data](https://img.shields.io/badge/data-UCI%20Wine%20Quality%20(CC%20BY%204.0)-success)
@@ -17,8 +18,8 @@
 |---|---|
 | Can unsupervised methods tell red from white? | **Yes.** k-means with k = 2 matches wine type for **98.6%** of wines (adjusted Rand index 0.94) without ever seeing the label; PC1 alone correlates 0.83 with type |
 | How many dimensions does the chemistry really have? | 3 principal components (eigenvalue > 1) explain **64%** of the variance; PC1 = red vs. white, PC2 = sugar/density vs. alcohol |
-| Are there outliers? | Robust (MCD) Mahalanobis distance flags **761** wines vs. **197** for the classical distance: *masking*. Heavy right tails inflate both counts; with the skewed variables on a log scale it's 524 vs. 136, and the gap remains |
-| Can chemistry predict a "good" (7+) white wine? | Partly: cross-validated LDA reaches AUC **0.78**, but alcohol alone already gets 0.75. At a base-rate threshold LDA catches **74%** of good wines with 71% specificity |
+| Are there outliers? | Robust (MCD) Mahalanobis distance flags **761** wines vs. **197** for the classical distance: *masking*. The robust count ranges from 524 to 761 across four variants (log scale, duplicates removed, rescaled cutoff), always 3.2–3.9× the classical one |
+| Can chemistry predict a "good" (7+) white wine? | Partly. LDA reaches AUC **0.78**, barely above alcohol alone (0.75). A random forest reaches **0.85**, but only with folds that keep duplicate wines together: random folds report 0.93, because 32% of white wines have an identical twin in another fold |
 | Bug found in the original analysis | The original outlier rule used the *lower* chi-square tail, flagging the 32 most **typical** wines as outliers |
 
 ![PCA biplot](docs/figures/pca_scree_biplot.png)
@@ -35,16 +36,18 @@ flowchart LR
     D --> E["04 Clustering + MDS<br/>k-means · Ward · silhouette<br/>· ARI vs. type"]
     D --> F["05 Factor analysis<br/>parallel analysis · ML<br/>· varimax"]
     E --> G["06 LDA<br/>10-fold CV · AUC<br/>· threshold choice"]
+    G --> H["07 Quality models<br/>logistic · random forest<br/>· grouped folds"]
 ```
 
 | Step | Script | Highlights |
 |---|---|---|
 | 1 | [`01_explore.R`](scripts/01_explore.R) | Standardized mean differences rank what separates red from white (total SO₂, volatile acidity, chlorides); correlation heatmap |
-| 2 | [`02_outliers.R`](scripts/02_outliers.R) | Three outlier rules compared per wine type, chi-square Q-Q plot of classical vs. robust distances |
-| 3 | [`03_pca.R`](scripts/03_pca.R) | PCA on standardized data, interpretable components, loadings stable (\|r\| ≈ 0.99) when outliers are removed |
+| 2 | [`02_outliers.R`](scripts/02_outliers.R) | Three outlier rules compared per wine type, chi-square Q-Q plot of classical vs. robust distances, robustness table (log scale, duplicates removed, rescaled cutoff) |
+| 3 | [`03_pca.R`](scripts/03_pca.R) | PCA on standardized data, interpretable components, loadings stable (\|r\| ≈ 0.99) when outliers or repeated rows are removed |
 | 4 | [`04_clustering_mds.R`](scripts/04_clustering_mds.R) | k chosen by silhouette, agreement with true type by adjusted Rand index, white-wine "style" clusters vs. quality, MDS ≡ PCA check |
 | 5 | [`05_factor_analysis.R`](scripts/05_factor_analysis.R) | Parallel analysis for the number of factors, Heywood-case detection, varimax loadings |
 | 6 | [`06_discriminant_analysis.R`](scripts/06_discriminant_analysis.R) | Cross-validated LDA, sensitivity/specificity/AUC, why a 0.5 threshold misleads on imbalanced classes |
+| 7 | [`07_quality_models.R`](scripts/07_quality_models.R) | Duplicate audit, LDA vs. logistic regression vs. random forest under random and grouped folds, sensitivity at 90% specificity |
 
 Every table and figure: [`docs/results.md`](docs/results.md).
 
@@ -84,24 +87,41 @@ Within white wine, three chemistry clusters differ in mean quality (5.61 → 6.1
 
 80% accuracy at 0.5 sounds good until you notice that "always predict not good" scores 78%. Choosing the threshold is a business decision, not a default. And the other ten measurements add only 0.03 of AUC over alcohol alone.
 
+### Better models, and a leak in the usual evaluation
+
+937 white wines repeat an earlier lab profile exactly (none with a conflicting score), so random folds put copies of the same wine on both sides of the split. Grouped folds keep every copy in one fold:
+
+| Model | AUC, random folds | AUC, grouped folds | Good wines caught at 90% specificity |
+|---|---|---|---|
+| Alcohol only (LDA) | 0.752 | 0.751 | 37.9% |
+| LDA | 0.784 | 0.782 | 42.5% |
+| Logistic regression | 0.790 | 0.788 | 42.6% |
+| Random forest (500 trees) | **0.925** | **0.847** | 52.2% |
+
+The linear models can't memorize a profile, so the leak barely touches them; the forest loses 0.078 of AUC once it can't recognize copies. The LDA results above stand, and the honest forest number is 0.85.
+
 ## Limitations & lessons learned
 
 - **Check which tail you're testing.** The original outlier code flagged `pchisq(d²) < 0.001`, which picks the wines *closest* to the centre. Plotting the flagged points would have caught it immediately.
 - **Classical estimates hide the outliers you're looking for.** Robust covariance (MCD) found almost 4× as many unusual wines. Skewness matters too: logging five right-skewed variables cuts both counts by about a third.
 - **Near-collinear variables break maximum-likelihood factor analysis.** Density is 91% explained by sugar and alcohol, which pushes uniquenesses to zero (a Heywood case). `factanal` doesn't warn; you have to check.
 - **Accuracy is the wrong headline on imbalanced classes.** Report sensitivity, specificity and AUC, and choose the threshold on purpose.
+- **Duplicates leak through random folds.** 1,177 rows (18%) repeat an earlier row. They hardly matter for PCA or linear models, but they inflated the random forest's AUC by 0.08. Folds are grouped by lab profile for every model comparison.
+- **The duplicates are kept, as in the original study.** Whether they are repeat bottles or data-entry copies can't be told from the data; sections 2, 3 and 7 of the report show how much each result moves without them.
 
 ## Getting started
 
 ### Requirements
 
-- R 4.1 or later (tested on 4.6.1) with `ggplot2`, `patchwork` and `digest` (`MASS` and `cluster` ship with R). `digest` is only needed for the data check on R older than 4.5.
+- R 4.1 or later (tested on 4.6.1; unit tests also run on 4.1 in CI) with `ggplot2`, `patchwork`, `randomForest` and `digest` (`MASS` and `cluster` ship with R). `digest` is only needed for the data check on R older than 4.5. [`renv.lock`](renv.lock) pins the exact versions.
 - Data ships with the repo in `data/raw/`: the exact UCI files, checked against their SHA-256 checksums before every run.
 
 ### Install
 
 ```r
-install.packages(c("ggplot2", "patchwork", "digest"))
+install.packages(c("ggplot2", "patchwork", "randomForest", "digest"))
+# or, for the pinned versions:
+renv::restore()
 ```
 
 Nothing is installed automatically: if a package from [`r-packages.txt`](r-packages.txt) is missing, the scripts stop and print the command.
@@ -109,25 +129,31 @@ Nothing is installed automatically: if a package from [`r-packages.txt`](r-packa
 ### Run
 
 ```bash
-Rscript run_all.R
+Rscript run_all.R          # full pipeline
+Rscript tests/testthat.R   # unit tests (needs testthat)
 ```
+
+CI runs the tests and the pipeline on every push with the pinned versions, fails if `docs/results.md` changes, and runs the tests again on R 4.1.
 
 ### Output
 
-About 30 seconds. Writes `docs/results.md` and the figures in `docs/figures/`; outlier flags go to `outputs/outlier_flags.csv` (git-ignored).
+About 1.5 minutes. Writes `docs/results.md` and the figures in `docs/figures/`; outlier flags go to `outputs/outlier_flags.csv` (git-ignored).
 
 ## Repository structure
 
 ```
 wine-quality-multivariate-analysis/
-├── run_all.R                     # runs scripts 01-06, writes docs/results.md
+├── run_all.R                     # checks the data, runs scripts 01-07, writes docs/results.md
 ├── r-packages.txt                # R packages used by the scripts
+├── renv.lock                     # pinned package versions
+├── .github/workflows/            # CI: tests, pipeline, drift check, secret scan
 ├── R/
 │   ├── check_packages.R          # stops with install instructions if a package is missing
 │   ├── check_data.R              # stops if a raw CSV doesn't match data/raw/SHA256SUMS
-│   ├── helpers.R                 # data loader, adjusted Rand index, AUC
+│   ├── helpers.R                 # data loader, duplicate keys, CV folds, adjusted Rand index, AUC
 │   └── report.R                  # markdown report + figure helpers
-├── scripts/01_…06_*.R
+├── scripts/01_…07_*.R
+├── tests/testthat/               # unit tests for the helpers and the data check
 ├── data/
 │   ├── raw/                      # UCI Wine Quality CSVs (CC BY 4.0) + SHA256SUMS
 │   └── README.md                 # source, licence, citation, data dictionary
@@ -138,14 +164,12 @@ wine-quality-multivariate-analysis/
 
 ## Skills demonstrated
 
-`Multivariate statistics (Mahalanobis distance, robust covariance, PCA, classical MDS, k-means and hierarchical clustering, exploratory factor analysis, linear discriminant analysis)` · `model validation (k-fold cross-validation, silhouette, adjusted Rand index, AUC)` · `reproducible R pipelines` · `clear statistical communication`
+`Multivariate statistics (Mahalanobis distance, robust covariance, PCA, classical MDS, k-means and hierarchical clustering, exploratory factor analysis, linear discriminant analysis)` · `random forests` · `model validation (k-fold and grouped cross-validation, leakage audit, silhouette, adjusted Rand index, AUC)` · `reproducible R pipelines` · `clear statistical communication`
 
 ## Roadmap
 
-- Log-transform the right-skewed variables (chlorides, sulphates, sugar, SO₂) and compare PCA and outlier results.
 - Confirmatory factor analysis with `lavaan` on red wine to test whether the white-wine factor structure carries over.
-- Compare LDA with QDA, regularized logistic regression and a tree ensemble for the quality task; treat quality as ordinal.
-- Deduplicate the 1,177 repeated rows as a sensitivity check.
+- Treat quality as ordinal (proportional-odds model) instead of a 7+ cutoff.
 - Render the report with R Markdown/Quarto for a single HTML deliverable.
 
 ## Data & citations

@@ -2,7 +2,8 @@
 #   Rscript run_all.R
 # Packages: listed in r-packages.txt; the run stops with the install command if any are missing.
 source("R/check_packages.R")
-source("R/check_data.R")     # raw CSVs must match the UCI checksums
+source("R/check_data.R")
+check_data()                 # raw CSVs must match the UCI checksums
 source("R/helpers.R")
 source("R/report.R")
 
@@ -17,7 +18,8 @@ pipeline <- c(
   "scripts/03_pca.R",
   "scripts/04_clustering_mds.R",
   "scripts/05_factor_analysis.R",
-  "scripts/06_discriminant_analysis.R"
+  "scripts/06_discriminant_analysis.R",
+  "scripts/07_quality_models.R"
 )
 for (s in pipeline) {
   message("==> ", s)
